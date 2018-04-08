@@ -1,0 +1,354 @@
+介绍(分布式，性能)
+http://baike.baidu.com/view/8005387.htm?fr=aladdin
+http://www.elasticsearch.cn/
+
+比较 http://blog.socialcast.com/realtime-search-solr-vs-elasticsearch/
+
+官方  http://www.elasticsearch.org 英文
+     http://www.elasticsearch.cn 中文
+
+翻译 http://fuxiaopang.gitbooks.io/learnelasticsearch/
+
+日志应用场景 http://michael.bouvy.net/blog/en/2013/11/19/collect-visualize-your-logs-logstash-elasticsearch-redis-kibana/
+
+系统准备安装环境------------------------------------------------------------------------------------
+1. 安装rzsz
+yum update -y
+yum list lrzsz*
+yum install lrzsz -y
+
+2. 安装JDK
+yum list java*
+yum install java-1.7.0-openjdk* -y
+
+
+3:安装zip与unzip
+yum install zip unzip
+
+4:关闭防火墙
+
+即时生效，重启后复原
+开启： service iptables start
+关闭： service iptables stop
+
+5:下载安装包1.3.1 解压缩
+curl -L -O  https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-1.3.1.zip
+
+
+//启动--------------------------------------------------------------------
+bin/elasticsearch -f -Xmx2g -Xms2g -Des.index.storage.type=memory -Des.max-open-files=true   前台启动
+bin/elasticsearch -d  后台启动
+
+/usr/local/search/elasticsearch-0.20.5/config/elasticsearch.yml 配置文件（来尝试并锁定进程的地址空间）
+bootstrap.mlockall=true
+
+
+marvel监控插件(注意版本号)
+bin/plugin -i elasticsearch/marvel/latest       http://192.168.0.34:9200/_plugin/marvel/
+echo 'marvel.agent.enabled: false' >> ./config/elasticsearch.yml    http://192.168.0.34:9200/_plugin/marvel/sense/
+
+head插件
+bin/plugin -install mobz/elasticsearch-head     http://192.168.0.34:9200/_plugin/head/
+bin/plugin -install lukas-vlcek/bigdesk         http://192.168.0.34:9200/_plugin/bigdesk/
+
+
+属性介绍-------------------------------------------------------------------------
+_index     the index this object should be indexed into
+_type      the type this object should be indexed into
+_id        the id of this object
+_version   the version of this object
+_parent    the parent,
+_ttl       the time-to-live of this object
+_routing   the routing of this object
+
+
+1：插入（index多次相当更新)-----------------------------------------------------
+curl -XPUT 'http://localhost:9200/dept/employee/30' -d '{ "empname": "emp30"}'
+
+Automatic ID
+curl -XPOST 'http://localhost:9200/twitter/tweet/' -d '{
+    "user" : "kimchy",
+    "post_date" : "2009-11-15T14:12:12",
+    "message" : "trying out Elastic Search"
+}'
+
+Routing 路由映射
+curl -XPOST 'http://localhost:9200/twitter/tweet?routing=kimchy' -d '{
+    "user" : "kimchy",
+    "post_date" : "2009-11-15T14:12:12",
+    "message" : "trying out Elastic Search"
+}'
+
+Timeout
+$ curl -XPUT 'http://localhost:9200/twitter/tweet/1?timeout=5m' -d '{
+    "user" : "kimchy",
+    "post_date" : "2009-11-15T14:12:12",
+    "message" : "trying out Elastic Search"
+}'
+
+2：获取(get)------------------------------------------------------------------
+curl -XGET 'http://localhost:9200/twitter/tweet/1'
+curl -XGET 'http://localhost:9200/dept/employee/30'
+
+A:获取指定字段(fields)
+curl -XGET 'http://localhost:9200/twitter/tweet/1?fields=message'
+
+B:删除(delete)
+curl -XDELETE 'http://localhost:9200/twitter/tweet/1'
+
+C:关闭
+curl -XPOST 'localhost:9200/my_index/_close'
+
+D:更新（update相当get和index)索引和字段必须存在
+curl -XPOST 'http://localhost:9200/dept/employee/30/_update' -d '{
+     "doc" : {
+        "empname": "张三"
+    }
+}'
+
+设置索引属性-------------------------------------------------------------------
+3：获取 settings (_index)
+curl -XGET 'http://localhost:9200/twitter/_settings'
+curl -XGET localhost:9200/_cluster/settings  集群
+
+4：设置 settings (_index)
+$ curl -XPUT http://localhost:9200/twitter1/ -d '{
+    "settings" : {
+        "number_of_shards" : 2,
+        "number_of_replicas" : 3
+    }
+}'
+
+更新 settings (_index)
+curl -XPUT 'localhost:9200/twitter1/_settings' -d '
+{
+    "index" : {
+        "number_of_replicas" : 4
+    }
+}
+
+5：获取 Mapping (_type)
+curl -XGET 'http://localhost:9200/twitter/tweet/_mapping'
+
+6：设置 Mapping(Mapping定义其实就是定义搜索引擎如何处理这些索引文档的规则的过程，这些定义包括字段是否可被搜索，采用何种分词切分方式等等)
+curl -XPUT 'http://localhost:9200/twitter/tweet/_mapping' -d '
+{
+    "tweet" : {
+        "properties" : {
+            "message" : {"type" : "string", "store" : "yes"}
+        }
+    }
+}'
+
+7: 刷新索引(能够被搜索)
+curl -XPOST 'http://localhost:9200/kimchy,elasticsearch/_refresh'
+curl -XPOST 'localhost:9200/_refresh'
+
+8：缓存清理 API
+curl -XPOST 'http://localhost:9200/kimchy,elasticsearch/_cache/clear'
+
+9：集群健康
+curl -XGET 'http://localhost:9200/_cluster/health?pretty=true'
+{
+    "cluster_name": "elasticsearch",
+    "status": "yellow",
+    "timed_out": false,
+    "number_of_nodes": 1,
+    "number_of_data_nodes": 1,
+    "active_primary_shards": 5,
+    "active_shards": 5,
+    "relocating_shards": 0,
+    "initializing_shards": 0,
+    "unassigned_shards": 5
+}
+
+10：分片健康
+curl -XGET 'http://localhost:9200/_cluster/health/twitter?level=shards&pretty=true'
+
+11：节点信息
+
+索引信息
+curl -XGET 'http://localhost:9200/_cluster/nodes'
+
+节点状态信息
+curl -XGET 'http://localhost:9200/_cluster/nodes/stats'
+
+集群的全面状态信息.
+curl -XGET 'http://localhost:9200/_cluster/state'
+
+12：节点关闭
+curl -XPOST 'http://localhost:9200/_cluster/nodes/_local/_shutdown'
+
+
+1：基本搜索-----------------------------------------------------------------------
+//A:lucene语法方式的查询
+$ curl -XGET http://localhost:9200/twitter/tweet/_search?q=user:kimchy
+             http://192.168.0.34:9200/vinuxcart/orders/_search?q=ID:635
+
+
+//B:query DSL term方式查询
+$ curl -XGET http://localhost:9200/twitter/tweet/_search -d '{
+    "query":{
+	    "term":{"user":"kimchy"}
+	}
+}'
+
+//浏览器插件请求方式（你也可以使用参数source 作为query_string（补充：即GET方式）来代替POST请求对应的body部分）
+http://192.168.0.34:9200/twitter/tweet/_search?{     "query":{ 	    "term":{"user":"kimchy"} 	} }
+
+//query DSL range方式查询
+$ curl -XGET http://localhost:9200/twitter/_search?pretty=true -d '{
+    "query" : {
+        "range" : {
+            "post_date" : {
+                "from" : "2009-11-15T13:00:00",
+                "to" : "2009-11-15T14:30:00"
+            }
+        }
+    }
+}'
+
+//C:查询所有索引下：_all是一个关键字
+$ curl -XGET http://localhost:9200/_all/tweet/_search?q=tag:warcraft
+
+2：sort 排序
+{
+    "sort" : [
+        { "post_date" : {"order" : "asc"} },
+        "user",
+        { "name" : "desc" },
+        { "age" : "desc" },
+        "_score"
+    ],
+    "query" : {
+        "term" : { "user" : "kimchy" }
+    }
+}
+
+
+3：count 统计
+curl -XGET 'http://localhost:9200/_count'(统计索引数量）
+curl -XGET 'http://localhost:9200/twitter/tweet/_count' -d '
+{
+    "term" : { "user" : "kimchy" }
+}'
+4：分词器 analyze
+curl -XPUT localhost:9200/test
+curl -XGET 'localhost:9200/test/_analyze?text=this+is+a+test'
+curl -XGET 'localhost:9200/test/_analyze?analyzer=whitespace' -d 'this is a test'
+
+5：优化API
+curl -XPOST 'http://localhost:9200/_optimize'
+
+6：网关快照备份
+curl -XPOST 'http://localhost:9200/twitter/_gateway/snapshot'
+
+7: Status API
+curl -XGET 'http://localhost:9200/twitter/_status?pretty=true'
+
+
+8：jdbc_river插件思路---------------------------------------------------------------
+A:安装
+bin/plugin --install jdbc --url http://xbib.org/repository/org/xbib/elasticsearch/plugin/elasticsearch-river-jdbc/1.3.0.4/elasticsearch-river-jdbc-1.3.0.4-plugin.zip
+
+B:执行单表
+curl -XPUT 'localhost:9200/_river/my_jdbc_river/_meta' -d '{
+    "type" : "jdbc",
+    "jdbc" : {
+        "url" : "jdbc:mysql://192.168.0.182:3306/test",
+        "user" : "root",
+        "password" : "mysql",
+        "sql" : "select * from student"
+    }
+}'
+
+删除定义river
+curl -XDELETE 'localhost:9200/_river/my_struct_river'
+
+C:执行多表
+curl -XPUT 'localhost:9200/_river/my_mysql_river/_meta' -d '{
+    "type" : "jdbc",
+    "jdbc" : {
+        "url" : "jdbc:mysql://192.168.0.182:3306/vinuxcart",
+        "user" : "root",
+        "password" : "mysql",
+        "sql" : "select * from ORDERS O left join ORDER_ITEM I on O.ID=I.ORDERS_ID",
+		"index" : "myindex",
+		"type" : "mytype"
+    }
+}'
+
+定义JOSN规则(Structured objects)结构索引id和json(item)格式
+curl -XPUT 'localhost:9200/_river/my_struct_river/_meta' -d '{
+    "type" : "jdbc",
+    "jdbc" : {
+        "url" : "jdbc:mysql://192.168.0.182:3306/vinuxcart",
+        "user" : "root",
+        "password" : "mysql",
+        "sql" : "select \"vinuxcart\" as \"_index\", \"orders\" as \"_type\", O.LAST_TIME as \"_id\" ,O.*,  I.TITLE  as \"ORDER_ITEM.TITLE\", I.PRICE as \"ORDER_ITEM.PRICE\" from ORDERS O left join ORDER_ITEM I on O.ID=I.ORDERS_ID"
+    }
+}'
+
+D:查看抓取结果
+curl 'localhost:9200/jdbc/_search?pretty&q=*'     查询jdbc索引下数据
+curl 'localhost:9200/vinuxcart/_search?pretty&q=*'  查询myindex索引下数据
+
+E:查看the node the river正在抓取状态
+curl 'localhost:9200/_river/jdbc/*/_state?pretty'
+
+F:拓展学习－－－－－－－－－－－－－－－－－－－－－－－－－－－－
+
+1:安装IK插件(中文分词)
+https://github.com/elasticsearch/elasticsearch-analysis-smartcn
+https://github.com/medcl/elasticsearch-analysis-ik
+
+2:性能测试
+插入100万数据(循环处理)，测试查询和性能(单机单线程大约1秒2万数据索引)
+http://192.168.0.34:9200/vinuxcart/orders2/
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "query_string": {
+            "default_field": "orders2.SALE_NAME",
+            "query": "卖家"
+          }
+        }
+      ],
+      "must_not": [],
+      "should": []
+    }
+  },
+  "from": 0,
+  "size": 10,
+  "sort": [],
+  "facets": {}
+}
+
+3:性能优化
+1、内存优化 你的内存大小超过6G，CMS是不给力的 建议使用G1 GC
+2、合理配置主节点和数据节点
+3、设置合理的刷新时间
+4、合理的设置分词
+5、配置上优化 index.cache.field.type: soft保证在Java抛出OutOfMemory异常之前,被设置为null。
+6、启动DocValues
+7、设置jvm锁住内存，注意分片均衡。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
